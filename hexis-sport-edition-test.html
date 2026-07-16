@@ -236,6 +236,12 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
 .range-btn.active,.metric-btn.active,.charge-btn.active{background:var(--deep);color:#EAF3F0;border-color:var(--deep)}
 .charge-lab{font-size:.8rem;color:var(--graphite)}
 
+.apply-inline{background:var(--sand,#f4f1ea);border:1px solid var(--hair);border-radius:12px;padding:10px 12px;margin:8px 0 4px}
+.apply-inline .ap-msg{font-size:.88rem;color:var(--ink);margin-bottom:8px}
+.apply-inline .ap-btns{display:flex;gap:8px;flex-wrap:wrap}
+.apply-inline .ap-yes{background:var(--deep);color:#EAF3F0;border:none;border-radius:9px;padding:8px 12px;font-family:Inter;font-size:.85rem;font-weight:600;cursor:pointer}
+.apply-inline .ap-no{background:transparent;color:var(--graphite);border:1px solid var(--hair);border-radius:9px;padding:8px 12px;font-family:Inter;font-size:.85rem;cursor:pointer}
+.version-line{text-align:center;font-size:.75rem;color:var(--graphite);margin-top:22px;opacity:.7}
 .btn.ghost.active-choice{background:var(--deep);color:#EAF3F0;border-color:var(--deep);font-weight:600}
 .sub-actions{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--hair)}
 .seance-models{margin-bottom:12px}
@@ -1509,7 +1515,8 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
   var APP_NAME = (window.CARNET_CONFIG && window.CARNET_CONFIG.appName) || 'Hexis Sport';
   var PROGRESSION_ON = !!(window.CARNET_CONFIG && window.CARNET_CONFIG.showProgression) && (typeof ProgressionEngine !== 'undefined');
   var PROGRAMS_ON = !!(window.CARNET_CONFIG && window.CARNET_CONFIG.showPrograms) && (typeof HexisLibrary !== 'undefined');
-  var APP_VERSION = '1.5.1';
+  var V16_UX = PROGRESSION_ON || PROGRAMS_ON;   // corrections d'usage v1.6, édition test uniquement
+  var APP_VERSION = (PROGRAMS_ON || PROGRESSION_ON) ? '1.6.0-test' : '1.5.1';
   var USER = 'toi';
   function loadUser() { try { var s = A.getSettings(); if (s && s.userName) USER = s.userName; } catch (e) {} }
 
@@ -1831,7 +1838,12 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
       var left = el('div', 'li-left');
       left.appendChild(el('div', 'li-date', fmtDate(it.date)));
       if (it.kind === 'workout') {
-        left.appendChild(el('div', 'li-sub', it.s.entries.length + ' exercice(s)'));
+        if (V16_UX && it.s.templateName) {
+          left.appendChild(el('div', 'li-sub', it.s.templateName + ' · ' + it.s.entries.length + ' exercice(s)'));
+        } else
+        {
+          left.appendChild(el('div', 'li-sub', it.s.entries.length + ' exercice(s)'));
+        }
         row.appendChild(left);
         var r = el('div', 'li-right');
         if (it.s.status === 'legacy') r.appendChild(el('span', 'chip warn', 'à vérifier'));
@@ -1854,7 +1866,13 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
     var exById = {}; A.getExercises().forEach(function (e) { exById[e.id] = e; });
     var main = document.getElementById('main'); clear(main);
     var back = el('button', 'back', '‹ Historique'); back.onclick = function () { renderApp('historique'); }; main.appendChild(back);
-    main.appendChild(el('h1', 'display screen-title', fmtDate(s.date)));
+    if (V16_UX && s.templateName) {
+      main.appendChild(el('h1', 'display screen-title', s.templateName));
+      main.appendChild(el('p', 'lede small', fmtDate(s.date)));
+    } else
+    {
+      main.appendChild(el('h1', 'display screen-title', fmtDate(s.date)));
+    }
     if (s.status === 'legacy') {
       var w = el('div', 'legacy-note');
       w.appendChild(el('b', null, 'Séance importée de l\'ancien carnet'));
@@ -2040,6 +2058,8 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
       rb.onclick = function () { askConfirm('Revenir à ton ancien carnet ? Tes données actuelles seront sauvegardées avant.', function () { A.rollbackToLegacyV2(); toast('Retour à l\'ancien carnet'); boot(); }, { danger: true, yesLabel: 'Revenir' }); };
       main.appendChild(rb);
     }
+
+    main.appendChild(el('p', 'version-line', APP_NAME + ' · version ' + APP_VERSION));
   }
   function action(title, sub, fn) { var b = el('button', 'action'); b.appendChild(el('div', 'action-title', title)); b.appendChild(el('div', 'action-sub', sub)); b.onclick = fn; return b; }
 
@@ -2550,7 +2570,7 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
     templateEditor(templateId);
   }
 
-    // ═══════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   //  PROGRESSION (maquette — édition test uniquement)
   //  Branchée sur ProgressionEngine. Chaque graphique = une question.
   // ═══════════════════════════════════════════════════════════════
@@ -2751,7 +2771,7 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
     svgChart(ProgressionEngine.cardioSeries({ cardioSessions: A.getCardioSessions(), cardioType: type, metric: PROG_CARDIO_METRIC, range: PROG_RANGE }), main);
   }
 
-    // ═══ Programmes prêts à installer + bibliothèque structurée (édition test) ═══
+  // ═══ Programmes prêts à installer + bibliothèque structurée (édition test) ═══
   function ensureLibraryExercise(libId) {
     var def = HexisLibrary.byId(libId); if (!def) return null;
     var found = A.getExercises().filter(function (e) { return e.libId === libId; })[0];
@@ -2857,7 +2877,7 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
       for (var i = 0; i < nSets; i++) sets.push({ charge: charge, reps: null, restSeconds: null });
       return { exerciseId: it.exerciseId, name: ex ? ex.name : 'Exercice', prescriptionSnapshot: Object.assign({}, it.prescription), sets: sets };
     });
-    A.saveDraft({ type: t.name, templateId: t.id, date: todayISO(), startedAt: new Date().toISOString(), entries: entries });
+    A.saveDraft({ type: t.name, templateId: t.id, templateName: t.name, installedFrom: t.installedFrom || null, date: todayISO(), startedAt: new Date().toISOString(), entries: entries });
   }
 
   // -- Écran de saisie de la séance en cours --------------------------
@@ -2894,9 +2914,9 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
       en.sets.forEach(function (st, si) {
         var row = el('div', 'log-row');
         row.appendChild(el('div', 'log-idx', 'S' + (si + 1)));
-        row.appendChild(logInput(st.charge, 'kg', function (v) { st.charge = v; A.saveDraft(draft); maybeApplyAll(en, si, 'charge', v, 'charge'); }));
-        row.appendChild(logInput(st.reps, 'Rép.', function (v) { st.reps = v; A.saveDraft(draft); maybeApplyAll(en, si, 'reps', v, 'répétitions'); }));
-        row.appendChild(logInput(st.restSeconds, 's', function (v) { st.restSeconds = v; A.saveDraft(draft); maybeApplyAll(en, si, 'restSeconds', v, 'récup'); }));
+        row.appendChild(logInput(st.charge, 'kg', function (v) { st.charge = v; A.saveDraft(draft); maybeApplyAll(en, si, 'charge', v, 'charge', card, row); }));
+        row.appendChild(logInput(st.reps, 'Rép.', function (v) { st.reps = v; A.saveDraft(draft); maybeApplyAll(en, si, 'reps', v, 'répétitions', card, row); }));
+        row.appendChild(logInput(st.restSeconds, 's', function (v) { st.restSeconds = v; A.saveDraft(draft); maybeApplyAll(en, si, 'restSeconds', v, 'récup', card, row); }));
         card.appendChild(row);
       });
       var addSet = el('button', 'link-btn', '+ série');
@@ -2956,17 +2976,31 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
   }
 
   // proposition "appliquer à toutes les séries" — déclenchée depuis la 1re série
-  function maybeApplyAll(en, si, field, v, label) {
+  function maybeApplyAll(en, si, field, v, label, card, row) {
     if (v == null || v === '') return;
     if (si !== 0) return;               // on ne propose qu'à partir de la première série
     if (en.sets.length < 2) return;
     var others = en.sets.filter(function (s, i) { return i !== si && (s[field] == null || s[field] === ''); });
     if (!others.length) return;         // rien à remplir
     var unit = field === 'charge' ? ' kg' : (field === 'restSeconds' ? ' s' : '');
-    showApplyPrompt('Appliquer ' + v + unit + ' de ' + label + ' à toutes les séries ?', function () {
-      en.sets.forEach(function (s) { s[field] = v; });
-      var d = A.getDraft(); A.saveDraft(d); renderApp('seance');
-    });
+    var msg = 'Appliquer ' + v + unit + ' de ' + label + ' à toutes les séries ?';
+    function applyAll() { en.sets.forEach(function (s) { s[field] = v; }); var d = A.getDraft(); A.saveDraft(d); renderApp('seance'); }
+    // Édition test : bandeau intégré DANS la carte de l'exercice, juste sous la série modifiée.
+    if (V16_UX && card && row) { showApplyInline(card, row, msg, applyAll); return; }
+    showApplyPrompt(msg, applyAll);     // quotidienne : comportement d'origine
+  }
+  function showApplyInline(card, row, msg, onAll) {
+    // retirer un éventuel bandeau inline déjà présent dans la carte
+    (card.children || []).slice().forEach(function (c) { if (c.className && (' ' + c.className + ' ').indexOf(' apply-inline ') >= 0) c.remove(); });
+    var bar = el('div', 'apply-inline');
+    bar.appendChild(el('div', 'ap-msg', msg));
+    var btns = el('div', 'ap-btns');
+    var yes = el('button', 'ap-yes', 'Appliquer à toutes'); yes.onclick = function () { bar.remove(); onAll(); };
+    var no = el('button', 'ap-no', 'Seulement cette série'); no.onclick = function () { bar.remove(); };
+    btns.appendChild(yes); btns.appendChild(no); bar.appendChild(btns);
+    // insérer juste après la série modifiée si possible, sinon à la fin de la carte
+    if (typeof card.insertBefore === 'function' && row && row.nextSibling) { try { card.insertBefore(bar, row.nextSibling); return; } catch (e) {} }
+    card.appendChild(bar);
   }
   function showApplyPrompt(msg, onAll) {
     var old = document.getElementById('apply-prompt'); if (old) old.remove();
@@ -3004,6 +3038,13 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
           sets: en.sets.filter(realSet).map(function (s) { return { charge: s.charge, reps: s.reps, restSeconds: s.restSeconds != null ? s.restSeconds : null, unverified: false }; }) };
       }).filter(function (en) { return en.sets.length; })   // un exercice sans série réellement faite est écarté
     };
+    // Snapshot du nom du modèle au moment de l'enregistrement (édition test).
+    // Figé : renommer le modèle plus tard ne change pas l'historique.
+    if (V16_UX && draft.templateId) {
+      var srcT = A.getTemplates().filter(function (x) { return x.id === draft.templateId; })[0];
+      session.templateName = (srcT && srcT.name) || draft.templateName || null;
+      session.installedFrom = (srcT && srcT.installedFrom) || draft.installedFrom || null;
+    }
     // charge de départ mise à jour UNIQUEMENT depuis une série réellement effectuée
     draft.entries.forEach(function (en) {
       var lastCharge = null; en.sets.forEach(function (s) { if (realSet(s) && s.charge != null) lastCharge = s.charge; });
