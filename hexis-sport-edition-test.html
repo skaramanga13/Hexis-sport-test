@@ -236,6 +236,7 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
 .range-btn.active,.metric-btn.active,.charge-btn.active{background:var(--deep);color:#EAF3F0;border-color:var(--deep)}
 .charge-lab{font-size:.8rem;color:var(--graphite)}
 
+.btn.ghost.active-choice{background:var(--deep);color:#EAF3F0;border-color:var(--deep);font-weight:600}
 .sub-actions{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--hair)}
 .seance-models{margin-bottom:12px}
 .menu-list{display:flex;flex-direction:column;gap:10px;margin-top:8px}
@@ -265,7 +266,7 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
 </head>
 <body>
 <div id="app"></div>
-<script>window.CARNET_CONFIG={"appName":"Hexis Sport Test","namespace":"hexis-test:","showProgression":true};</script>
+<script>window.CARNET_CONFIG={"appName":"Hexis Sport Test","namespace":"hexis-test:","showProgression":true,"showPrograms":true};</script>
 <script>
 /* ============================================================
  * ProgressionEngine — moteur de progression PUR (aucun DOM)
@@ -572,6 +573,265 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
 
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.ProgressionEngine = API;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+/* ============================================================
+ * Hexis Sport v1.6 — Bibliothèque d'exercices + Programmes
+ * Module PUR (aucun DOM). UMD : module.exports (Node) + window.HexisLibrary.
+ * Règles :
+ *  - chaque exercice a un id STABLE (slug), un nom canonique, des alias,
+ *    une catégorie, un type (external_load|bodyweight|assisted|duration|distance).
+ *  - un exercice assisté n'est JAMAIS représenté par une charge négative.
+ *  - installer un programme crée une COPIE utilisateur modifiable
+ *    (source non modifiée) et n'impose AUCUNE charge de départ.
+ *  - normalisation insensible aux accents/casse/espaces/tirets pour éviter les doublons.
+ * ============================================================ */
+(function (root) {
+  'use strict';
+
+  function E(id, name, aliases, category, movementPattern, equipment, type, mp, ms, repMin, repMax, rest, unilateral) {
+    function def(v, d) { return v === undefined ? d : v; }   // ne remplace QUE undefined (garde les 0 valides)
+    var isTimed = (type === 'duration' || type === 'distance');
+    return {
+      id: id, name: name, aliases: aliases || [], category: category, movementPattern: movementPattern || null,
+      equipment: equipment || [], exerciseType: type || 'external_load',
+      musclesPrimary: mp || [], musclesSecondary: ms || [],
+      // pas de plage de répétitions pour un exercice chronométré/en distance
+      defaultRepRange: isTimed ? null : { min: def(repMin, 8), max: def(repMax, 12) },
+      defaultRestSeconds: def(rest, isTimed ? 0 : 90),
+      unilateral: !!unilateral, archived: false
+    };
+  }
+
+  var LIBRARY = [
+    // ---- JAMBES ----
+    E('leg_press', 'Presse à cuisses', ['leg press', 'presse jambes', 'presse a cuisses'], 'jambes', 'poussee_jambes', ['machine'], 'external_load', ['quadriceps', 'fessiers'], ['ischios'], 8, 12, 120),
+    E('hack_squat', 'Hack squat', ['hack', 'hack squat'], 'jambes', 'poussee_jambes', ['machine'], 'external_load', ['quadriceps'], ['fessiers'], 8, 12, 150),
+    E('squat', 'Squat', ['back squat', 'squat barre'], 'jambes', 'poussee_jambes', ['barre'], 'external_load', ['quadriceps', 'fessiers'], ['ischios', 'lombaires'], 5, 10, 150),
+    E('squat_smith', 'Squat guidé (Smith)', ['smith squat', 'squat machine guidee'], 'jambes', 'poussee_jambes', ['machine'], 'external_load', ['quadriceps', 'fessiers'], ['ischios'], 8, 12, 120),
+    E('goblet_squat', 'Goblet squat', ['goblet'], 'jambes', 'poussee_jambes', ['halteres'], 'external_load', ['quadriceps', 'fessiers'], [], 8, 15, 90),
+    E('leg_extension', 'Leg extension', ['leg extension', 'extension jambes', 'extension quadriceps'], 'jambes', 'extension_genou', ['machine'], 'external_load', ['quadriceps'], [], 10, 15, 75),
+    E('leg_curl', 'Leg curl', ['leg curl', 'curl ischios', 'leg curl couche'], 'jambes', 'flexion_genou', ['machine'], 'external_load', ['ischios'], [], 10, 15, 90),
+    E('leg_curl_assis', 'Leg curl assis', ['seated leg curl', 'leg curl assis'], 'jambes', 'flexion_genou', ['machine'], 'external_load', ['ischios'], [], 10, 15, 75),
+    E('rdl_halteres', 'Soulevé de terre roumain haltères', ['rdl', 'romanian deadlift', 'souleve de terre roumain', 'sdt roumain'], 'jambes', 'charniere_hanche', ['halteres'], 'external_load', ['ischios', 'fessiers'], ['lombaires'], 8, 12, 120),
+    E('hip_thrust', 'Hip thrust', ['hip thrust', 'pont fessier'], 'fessiers', 'extension_hanche', ['barre', 'machine'], 'external_load', ['fessiers'], ['ischios'], 8, 12, 120),
+    E('fentes', 'Fentes', ['fentes', 'lunges', 'split squat'], 'jambes', 'fente', ['halteres'], 'external_load', ['quadriceps', 'fessiers'], ['ischios'], 8, 12, 90, true),
+    E('adducteurs', 'Machine adducteurs', ['adducteurs', 'adductor machine'], 'jambes', 'adduction', ['machine'], 'external_load', ['adducteurs'], [], 12, 20, 60),
+    E('abducteurs', 'Machine abducteurs', ['abducteurs', 'abductor machine'], 'fessiers', 'abduction', ['machine'], 'external_load', ['moyen fessier'], [], 12, 20, 60),
+    E('mollets_debout', 'Mollets debout', ['mollets', 'calf raise', 'extension mollets'], 'mollets', 'flexion_plantaire', ['machine'], 'external_load', ['mollets'], [], 10, 20, 60),
+    E('mollets_assis', 'Mollets assis', ['seated calf raise', 'mollets assis'], 'mollets', 'flexion_plantaire', ['machine'], 'external_load', ['mollets'], [], 12, 20, 60),
+    E('presse_mollets', 'Presse à mollets', ['calf press', 'presse mollets'], 'mollets', 'flexion_plantaire', ['machine'], 'external_load', ['mollets'], [], 10, 20, 60),
+    // ---- PECTORAUX ----
+    E('chest_press', 'Développé poitrine machine', ['chest press', 'developpe poitrine', 'developpe pectoraux machine', 'developpe poitrine machine'], 'pectoraux', 'poussee_horizontale', ['machine'], 'external_load', ['pectoraux'], ['triceps', 'epaules'], 8, 12, 90),
+    E('chest_press_incline', 'Développé incliné machine', ['incline chest press', 'developpe incline machine'], 'pectoraux', 'poussee_horizontale_haute', ['machine'], 'external_load', ['pectoraux'], ['triceps', 'epaules'], 8, 12, 90),
+    E('developpe_couche_halteres', 'Développé couché haltères', ['developpe couche halteres', 'db bench press', 'bench halteres'], 'pectoraux', 'poussee_horizontale', ['halteres'], 'external_load', ['pectoraux'], ['triceps', 'epaules'], 6, 10, 120),
+    E('developpe_incline_halteres', 'Développé incliné haltères', ['developpe incline halteres', 'incline db press'], 'pectoraux', 'poussee_horizontale_haute', ['halteres'], 'external_load', ['pectoraux'], ['triceps', 'epaules'], 8, 12, 120),
+    E('pec_deck', 'Pec deck', ['pec deck', 'butterfly', 'ecarte machine'], 'pectoraux', 'adduction_horizontale', ['machine'], 'external_load', ['pectoraux'], [], 10, 15, 75),
+    E('ecarte_poulie', 'Écartés à la poulie', ['ecarte poulie', 'cable fly'], 'pectoraux', 'adduction_horizontale', ['poulie'], 'external_load', ['pectoraux'], [], 12, 15, 60),
+    E('pompes', 'Pompes', ['pompes', 'push up', 'push-up'], 'pectoraux', 'poussee_horizontale', ['aucun'], 'bodyweight', ['pectoraux'], ['triceps', 'epaules'], 8, 20, 60),
+    E('dips', 'Dips', ['dips'], 'pectoraux', 'poussee_verticale_basse', ['barres'], 'bodyweight', ['pectoraux', 'triceps'], ['epaules'], 6, 12, 90),
+    // ---- DOS ----
+    E('tirage_vertical', 'Tirage vertical', ['lat machine', 'lat pulldown', 'tirage poitrine', 'pulldown'], 'dos', 'tirage_vertical', ['machine', 'poulie'], 'external_load', ['grand dorsal'], ['biceps', 'haut du dos'], 8, 12, 90),
+    E('tirage_vertical_neutre', 'Tirage vertical prise neutre', ['tirage neutre', 'neutral grip pulldown'], 'dos', 'tirage_vertical', ['machine', 'poulie'], 'external_load', ['grand dorsal'], ['biceps'], 8, 12, 90),
+    E('rowing_assis', 'Rowing assis', ['seated row', 'rowing assis', 'rowing poulie basse'], 'dos', 'tirage_horizontal', ['poulie', 'machine'], 'external_load', ['dos', 'grand dorsal'], ['biceps'], 8, 12, 90),
+    E('low_row', 'Low Row', ['low row', 'low-row', 'low row machine', 'rowing bas'], 'dos', 'tirage_horizontal', ['machine'], 'external_load', ['dos', 'grand dorsal'], ['biceps'], 8, 12, 90),
+    E('rowing_convergent', 'Rowing convergent', ['rowing convergent', 'converging row', 'machine row convergente'], 'dos', 'tirage_horizontal', ['machine'], 'external_load', ['dos'], ['biceps'], 8, 12, 120),
+    E('rowing_barre', 'Rowing barre', ['rowing barre', 'barbell row'], 'dos', 'tirage_horizontal', ['barre'], 'external_load', ['dos'], ['biceps', 'lombaires'], 6, 10, 120),
+    E('rowing_haltere', 'Rowing haltère', ['rowing haltere', 'db row', 'one arm row'], 'dos', 'tirage_horizontal', ['halteres'], 'external_load', ['dos'], ['biceps'], 8, 12, 90, true),
+    E('tractions', 'Tractions', ['tractions', 'pull up', 'pull-up'], 'dos', 'tirage_vertical', ['barre'], 'bodyweight', ['grand dorsal'], ['biceps'], 4, 12, 120),
+    E('tractions_assistees', 'Tractions assistées', ['tractions assistees', 'assisted pull up'], 'dos', 'tirage_vertical', ['machine'], 'assisted', ['grand dorsal'], ['biceps'], 6, 12, 120),
+    E('pull_over', 'Pull-over', ['pull over', 'pullover'], 'dos', 'tirage_vertical', ['halteres', 'poulie'], 'external_load', ['grand dorsal'], ['pectoraux'], 10, 15, 75),
+    E('face_pull', 'Face pull', ['face pull'], 'epaules', 'tirage_horizontal_haut', ['poulie'], 'external_load', ['arriere epaule'], ['haut du dos'], 12, 20, 60),
+    // ---- ÉPAULES ----
+    E('shoulder_press_machine', 'Shoulder press machine', ['shoulder press', 'developpe epaules machine', 'developpe militaire machine'], 'epaules', 'poussee_verticale', ['machine'], 'external_load', ['epaules'], ['triceps'], 8, 12, 90),
+    E('developpe_epaules_halteres', 'Développé épaules haltères', ['developpe epaules halteres', 'db shoulder press'], 'epaules', 'poussee_verticale', ['halteres'], 'external_load', ['epaules'], ['triceps'], 8, 12, 90),
+    E('developpe_militaire', 'Développé militaire (barre)', ['developpe militaire', 'overhead press', 'ohp'], 'epaules', 'poussee_verticale', ['barre'], 'external_load', ['epaules'], ['triceps'], 5, 10, 120),
+    E('elevations_laterales', 'Élévations latérales', ['elevations laterales', 'lateral raise', 'side raise'], 'epaules', 'abduction_epaule', ['halteres', 'machine'], 'external_load', ['deltoide lateral'], [], 12, 20, 60),
+    E('oiseau', 'Oiseau (arrière d\'épaule)', ['oiseau', 'reverse fly', 'rear delt', 'reverse pec deck'], 'epaules', 'abduction_horizontale', ['halteres', 'machine'], 'external_load', ['arriere epaule'], [], 12, 20, 60),
+    E('tirage_menton', 'Tirage menton', ['tirage menton', 'upright row'], 'epaules', 'tirage_vertical_haut', ['barre', 'poulie'], 'external_load', ['epaules', 'trapezes'], [], 10, 15, 75),
+    // ---- BICEPS ----
+    E('curl_biceps', 'Curl biceps', ['curl', 'curl biceps', 'biceps curl'], 'biceps', 'flexion_coude', ['halteres', 'barre'], 'external_load', ['biceps'], [], 10, 15, 60),
+    E('curl_marteau', 'Curl marteau', ['curl marteau', 'hammer curl'], 'biceps', 'flexion_coude', ['halteres'], 'external_load', ['biceps', 'brachial'], [], 10, 15, 60),
+    E('curl_pupitre', 'Curl pupitre', ['curl pupitre', 'larry scott', 'preacher curl'], 'biceps', 'flexion_coude', ['machine', 'barre'], 'external_load', ['biceps'], [], 10, 15, 60),
+    E('curl_poulie', 'Curl à la poulie', ['curl poulie', 'cable curl'], 'biceps', 'flexion_coude', ['poulie'], 'external_load', ['biceps'], [], 10, 15, 60),
+    // ---- TRICEPS ----
+    E('extension_triceps_poulie', 'Extension triceps poulie', ['extension triceps', 'pushdown', 'triceps poulie'], 'triceps', 'extension_coude', ['poulie'], 'external_load', ['triceps'], [], 10, 15, 60),
+    E('barre_au_front', 'Barre au front', ['barre au front', 'skullcrusher'], 'triceps', 'extension_coude', ['barre', 'halteres'], 'external_load', ['triceps'], [], 8, 12, 75),
+    E('extension_nuque', 'Extension nuque haltère', ['extension nuque', 'overhead triceps'], 'triceps', 'extension_coude', ['halteres'], 'external_load', ['triceps'], [], 10, 15, 60),
+    E('kickback', 'Kickback triceps', ['kickback'], 'triceps', 'extension_coude', ['halteres', 'poulie'], 'external_load', ['triceps'], [], 12, 20, 45),
+    // ---- ABDOMINAUX ----
+    E('abdominal_crunch_machine', 'Abdominal crunch machine', ['crunch machine', 'abdominal crunch', 'crunch'], 'abdominaux', 'flexion_tronc', ['machine'], 'external_load', ['abdominaux'], [], 10, 15, 60),
+    E('crunch_poulie', 'Crunch à la poulie', ['crunch poulie', 'cable crunch'], 'abdominaux', 'flexion_tronc', ['poulie'], 'external_load', ['abdominaux'], [], 12, 20, 60),
+    E('releve_jambes', 'Relevé de jambes', ['releve de jambes', 'leg raise'], 'abdominaux', 'flexion_hanche', ['aucun'], 'bodyweight', ['abdominaux'], [], 8, 20, 60),
+    E('gainage', 'Gainage (planche)', ['gainage', 'planche', 'plank'], 'abdominaux', 'anti_extension', ['aucun'], 'duration', ['abdominaux'], [], 20, 60, 60),
+    E('abdominaux', 'Abdominaux', ['abdos', 'abdominaux'], 'abdominaux', 'flexion_tronc', ['aucun'], 'bodyweight', ['abdominaux'], [], 10, 20, 60),
+    // ---- CARDIO (référence ; le suivi cardio détaillé reste géré séparément) ----
+    E('tapis', 'Tapis', ['treadmill', 'tapis de course'], 'cardio', 'marche_course', ['machine'], 'duration', [], [], undefined, undefined, 0),
+    E('velo', 'Vélo', ['bike', 'velo'], 'cardio', 'pedalage', ['machine'], 'duration', [], [], undefined, undefined, 0),
+    E('course_exterieure', 'Course (extérieur)', ['course', 'running', 'run'], 'cardio', 'course', ['aucun'], 'distance', [], [], undefined, undefined, 0),
+    E('marche', 'Marche', ['walk', 'marche'], 'cardio', 'marche', ['aucun'], 'duration', [], [], undefined, undefined, 0)
+  ];
+
+  // ---- normalisation & recherche ----
+  function normalize(s) {
+    return (s || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s\-_'’]/g, '');
+  }
+  function byId(id) { for (var i = 0; i < LIBRARY.length; i++) if (LIBRARY[i].id === id) return LIBRARY[i]; return null; }
+
+  // Résout un nom OU alias vers l'exercice canonique (insensible accents/casse/espaces/tirets)
+  function resolve(input) {
+    var q = normalize(input); if (!q) return null;
+    for (var i = 0; i < LIBRARY.length; i++) {
+      var e = LIBRARY[i];
+      if (normalize(e.name) === q) return e;
+      for (var j = 0; j < e.aliases.length; j++) if (normalize(e.aliases[j]) === q) return e;
+    }
+    return null;
+  }
+
+  // Autocomplétion : nom-commence > alias-commence > contient. Renvoie jusqu'à `limit`.
+  function searchExercises(query, opts) {
+    opts = opts || {}; var limit = opts.limit || 8;
+    var q = normalize(query);
+    if (!q) return [];
+    var starts = [], aliasStarts = [], contains = [];
+    LIBRARY.forEach(function (e) {
+      if (e.archived) return;
+      var n = normalize(e.name);
+      if (n.indexOf(q) === 0) { starts.push(e); return; }
+      var aliasStart = e.aliases.some(function (a) { return normalize(a).indexOf(q) === 0; });
+      if (aliasStart) { aliasStarts.push(e); return; }
+      var contained = n.indexOf(q) >= 0 || e.aliases.some(function (a) { return normalize(a).indexOf(q) >= 0; });
+      if (contained) contains.push(e);
+    });
+    var out = starts.concat(aliasStarts).concat(contains).slice(0, limit);
+    return out.map(function (e) {
+      var matchedAlias = null;
+      if (normalize(e.name).indexOf(q) !== 0) { matchedAlias = e.aliases.filter(function (a) { return normalize(a).indexOf(q) >= 0; })[0] || null; }
+      return { id: e.id, name: e.name, category: e.category, equipment: e.equipment, matchedAlias: matchedAlias };
+    });
+  }
+  // Une correspondance EXACTE existe-t-elle ? (pour n'afficher "Créer" que sinon)
+  function hasExactMatch(query) { return !!resolve(query); }
+
+  // ---- PROGRAMMES ----
+  // item : [libId, sets, repMin, repMax, rest]
+  function it(ref, sets, rmin, rmax, rest) { return { ref: ref, sets: sets, repMin: rmin, repMax: rmax, rest: rest }; }
+  var PROGRAMS = [
+    {
+      id: 'decouverte', name: 'Découverte', level: 'decouverte', daysPerWeek: 2,
+      description: 'Deux séances full body A/B, 2 jours/semaine. Pour débuter ou reprendre.',
+      templates: [
+        { name: 'Découverte A', items: [it('leg_press', 2, 10, 15, 90), it('chest_press', 2, 10, 15, 90), it('tirage_vertical', 2, 10, 15, 90), it('leg_curl_assis', 2, 10, 15, 75), it('shoulder_press_machine', 2, 10, 15, 90), it('abdominal_crunch_machine', 2, 10, 15, 60)] },
+        { name: 'Découverte B', items: [it('leg_press', 2, 10, 15, 90), it('rowing_assis', 2, 10, 15, 90), it('chest_press', 2, 10, 15, 90), it('leg_extension', 2, 10, 15, 75), it('elevations_laterales', 2, 12, 15, 60), it('abdominal_crunch_machine', 2, 10, 15, 60)] }
+      ]
+    },
+    {
+      id: 'debutant', name: 'Débutant', level: 'debutant', daysPerWeek: 3,
+      description: 'Full body A/B alterné (A-B-A puis B-A-B), 3 jours/semaine.',
+      templates: [
+        { name: 'Débutant A', items: [it('leg_press', 3, 8, 12, 120), it('chest_press', 3, 8, 12, 90), it('tirage_vertical', 3, 8, 12, 90), it('leg_curl', 3, 10, 15, 75), it('shoulder_press_machine', 2, 8, 12, 90), it('abdominal_crunch_machine', 3, 10, 15, 60)] },
+        { name: 'Débutant B', items: [it('leg_press', 3, 8, 12, 120), it('rowing_assis', 3, 8, 12, 90), it('developpe_couche_halteres', 3, 8, 12, 90), it('leg_extension', 3, 10, 15, 75), it('elevations_laterales', 2, 12, 15, 60), it('curl_biceps', 2, 10, 15, 60), it('extension_triceps_poulie', 2, 10, 15, 60)] }
+      ]
+    },
+    {
+      id: 'intermediaire', name: 'Intermédiaire', level: 'intermediaire', daysPerWeek: 4,
+      description: 'Haut A / Bas A / Haut B / Bas B, 4 jours/semaine.',
+      templates: [
+        { name: 'Haut du corps A', items: [it('developpe_couche_halteres', 4, 6, 10, 120), it('tirage_vertical', 4, 8, 12, 120), it('rowing_assis', 3, 8, 12, 90), it('shoulder_press_machine', 3, 8, 12, 90), it('elevations_laterales', 3, 12, 20, 60), it('extension_triceps_poulie', 3, 10, 15, 60), it('curl_biceps', 3, 10, 15, 60)] },
+        { name: 'Bas du corps A', items: [it('leg_press', 4, 6, 10, 150), it('rdl_halteres', 3, 8, 12, 120), it('leg_curl', 3, 10, 15, 90), it('leg_extension', 3, 10, 15, 75), it('mollets_debout', 3, 10, 20, 60), it('abdominal_crunch_machine', 3, 10, 15, 60)] },
+        { name: 'Haut du corps B', items: [it('developpe_incline_halteres', 3, 8, 12, 120), it('rowing_convergent', 4, 8, 12, 120), it('tirage_vertical_neutre', 3, 8, 12, 90), it('pec_deck', 3, 10, 15, 75), it('elevations_laterales', 3, 12, 20, 60), it('extension_triceps_poulie', 3, 10, 15, 60), it('curl_marteau', 3, 10, 15, 60)] },
+        { name: 'Bas du corps B', items: [it('hack_squat', 4, 8, 12, 150), it('hip_thrust', 3, 8, 12, 120), it('leg_curl', 3, 10, 15, 90), it('fentes', 3, 8, 12, 90), it('mollets_debout', 3, 10, 20, 60), it('abdominaux', 3, 10, 15, 60)] }
+      ]
+    },
+    {
+      id: 'avance', name: 'Avancé (base à personnaliser)', level: 'avance', daysPerWeek: 4,
+      description: 'Base avancée à personnaliser — destinée aux personnes déjà autonomes dans leur entraînement. À adapter selon volume, points faibles, blessures et objectif.',
+      customizable: true,
+      templates: [
+        { name: 'Pectoraux + dos', items: [it('developpe_couche_halteres', 4, 6, 10, 120), it('developpe_incline_halteres', 3, 8, 12, 90), it('tirage_vertical', 4, 8, 12, 120), it('rowing_convergent', 3, 8, 12, 90), it('pec_deck', 3, 10, 15, 60)] },
+        { name: 'Jambes', items: [it('leg_press', 4, 6, 10, 150), it('rdl_halteres', 3, 8, 12, 120), it('leg_curl', 3, 10, 15, 90), it('leg_extension', 3, 10, 15, 75), it('mollets_debout', 4, 10, 20, 60)] },
+        { name: 'Épaules + bras', items: [it('shoulder_press_machine', 4, 8, 12, 90), it('elevations_laterales', 4, 12, 20, 60), it('oiseau', 3, 12, 20, 60), it('curl_biceps', 3, 10, 15, 60), it('extension_triceps_poulie', 3, 10, 15, 60)] },
+        { name: 'Jambes + dos', items: [it('hack_squat', 4, 8, 12, 150), it('hip_thrust', 3, 8, 12, 120), it('rowing_barre', 4, 6, 10, 120), it('tirage_vertical_neutre', 3, 8, 12, 90), it('mollets_assis', 3, 12, 20, 60)] }
+      ]
+    }
+  ];
+  function programById(id) { for (var i = 0; i < PROGRAMS.length; i++) if (PROGRAMS[i].id === id) return PROGRAMS[i]; return null; }
+
+  // Assistant : propose un programme depuis les réponses (l'app ne l'installe pas d'office)
+  function planProgram(answers) {
+    answers = answers || {};
+    if (answers.experience === 'create') return null;                 // l'utilisateur veut créer lui-même
+    var days = answers.daysPerWeek || 3;
+    if (answers.experience === 'beginner_restart') return days <= 2 ? 'decouverte' : 'debutant';
+    if (answers.experience === 'under_1y') return days >= 4 ? 'intermediaire' : 'debutant';
+    if (answers.experience === 'over_1y') return days >= 4 ? 'intermediaire' : 'debutant';
+    return days <= 2 ? 'decouverte' : (days >= 4 ? 'intermediaire' : 'debutant');
+  }
+
+  // Installe un programme : crée des COPIES utilisateur modifiables. Ne touche pas PROGRAMS.
+  // Garantit l'existence des exercices en bibliothèque (par libId), SANS imposer de charge.
+  function installProgram(adapter, programId) {
+    var prog = programById(programId); if (!prog) throw new Error('programme inconnu : ' + programId);
+    // PRÉ-VALIDATION : tous les refs doivent exister AVANT toute création (pas d'installation partielle)
+    prog.templates.forEach(function (tpl) {
+      tpl.items.forEach(function (item) {
+        if (!byId(item.ref)) throw new Error('exercice bibliothèque inconnu : ' + item.ref + ' (aucune installation effectuée)');
+      });
+    });
+    var existing = {}; adapter.getExercises().forEach(function (e) { if (e.libId) existing[e.libId] = e; });
+    function ensureExercise(libId) {
+      if (existing[libId]) return existing[libId];
+      var def = byId(libId);
+      var ex = adapter.createExercise(def.name, null);               // AUCUNE charge imposée
+      ex.libId = def.id; ex.category = def.category; ex.exerciseType = def.exerciseType;
+      ex.aliases = (ex.aliases || []).concat(def.aliases);
+      ex.musclesPrimary = def.musclesPrimary; ex.musclesSecondary = def.musclesSecondary;
+      ex.movementPattern = def.movementPattern; ex.equipment = def.equipment; ex.unilateral = def.unilateral;
+      var reps = def.defaultRepRange ? (def.defaultRepRange.min + '-' + def.defaultRepRange.max) : null;
+      ex.defaults = { setsTarget: 3, repsTarget: reps, restSeconds: def.defaultRestSeconds };
+      adapter.saveExercise(ex); existing[libId] = ex; return ex;
+    }
+    var templateIds = [];
+    prog.templates.forEach(function (tpl) {
+      var items = tpl.items.map(function (item, i) {
+        var ex = ensureExercise(item.ref);
+        return { exerciseId: ex.id, order: i + 1, prescription: { setsTarget: item.sets, repsTarget: item.repMin + '-' + item.repMax, restSeconds: item.rest } };
+      });
+      var created = adapter.saveTemplate({ name: tpl.name, items: items, source: 'user', installedFrom: prog.id });
+      templateIds.push(created.id);
+    });
+    return { programId: prog.id, templateIds: templateIds, templatesCreated: templateIds.length };
+  }
+
+  // Règle de double progression : suggère (ne modifie jamais) après 3×repMax réussies.
+  // sessionSets = [{charge,reps}] de la dernière séance pour cet exercice.
+  function progressionSuggestion(prescription, sessionSets) {
+    var realSets = (sessionSets || []).filter(function (s) { return s && s.reps != null && s.reps > 0; });
+    var repMax = prescription && prescription.repsTarget ? parseInt(String(prescription.repsTarget).split('-').pop(), 10) : null;
+    if (!repMax || realSets.length < (prescription.setsTarget || realSets.length)) return { suggest: false };
+    var allAtTop = realSets.every(function (s) { return s.reps >= repMax; });
+    if (!allAtTop) return { suggest: false };
+    var charge = realSets[realSets.length - 1].charge;
+    return {
+      suggest: true,
+      message: 'Tu as atteint le haut de la plage sur toutes tes séries. Tu peux essayer la charge suivante.',
+      options: ['Continuer' + (charge != null ? ' à ' + charge + ' kg' : ''), 'Essayer la charge suivante', 'Choisir une autre charge']
+    };
+  }
+
+  var API = {
+    LIBRARY: LIBRARY, PROGRAMS: PROGRAMS,
+    normalize: normalize, resolve: resolve, byId: byId,
+    searchExercises: searchExercises, hasExactMatch: hasExactMatch,
+    programById: programById, planProgram: planProgram, installProgram: installProgram,
+    progressionSuggestion: progressionSuggestion,
+    count: LIBRARY.length
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  else root.HexisLibrary = API;
 })(typeof self !== 'undefined' ? self : this);
 
 </script>
@@ -1248,6 +1508,7 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
   var root = document.getElementById('app');
   var APP_NAME = (window.CARNET_CONFIG && window.CARNET_CONFIG.appName) || 'Hexis Sport';
   var PROGRESSION_ON = !!(window.CARNET_CONFIG && window.CARNET_CONFIG.showProgression) && (typeof ProgressionEngine !== 'undefined');
+  var PROGRAMS_ON = !!(window.CARNET_CONFIG && window.CARNET_CONFIG.showPrograms) && (typeof HexisLibrary !== 'undefined');
   var APP_VERSION = '1.5.1';
   var USER = 'toi';
   function loadUser() { try { var s = A.getSettings(); if (s && s.userName) USER = s.userName; } catch (e) {} }
@@ -2036,6 +2297,7 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
     var gerer = el('button', 'link-btn', 'Gérer mes modèles'); gerer.onclick = function () { viewModeles(main); };
     var biblio = el('button', 'link-btn', 'Bibliothèque'); biblio.onclick = function () { viewBibliotheque(main); };
     sec.appendChild(libre); sec.appendChild(gerer); sec.appendChild(biblio);
+    if (PROGRAMS_ON) { var progr = el('button', 'link-btn', 'Programmes'); progr.onclick = function () { viewProgrammes(main); }; sec.appendChild(progr); }
     main.appendChild(sec);
   }
   function nextLetter() {
@@ -2239,6 +2501,27 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
         var l1 = el('div', 'list'); libMatch.forEach(function (e) { l1.appendChild(pickRow(e.name, function () { addToTemplate(templateId, e); })); }); results.appendChild(l1);
       }
       var libNames = {}; lib.forEach(function (e) { libNames[norm(e.name)] = true; });
+      // Autocomplétion structurée (édition test) : suggestions classées + groupe/matériel
+      if (PROGRAMS_ON && q) {
+        var libIds = {}; lib.forEach(function (e) { if (e.libId) libIds[e.libId] = true; });
+        var sugg = libraryAutocomplete(search.value).filter(function (s) { return !libIds[s.id]; });
+        if (sugg.length) {
+          results.appendChild(el('div', 'card-eyebrow', 'Suggestions'));
+          var ls = el('div', 'list');
+          sugg.forEach(function (s) {
+            var sub = s.category + (s.equipment && s.equipment.length ? ' · ' + s.equipment.join('/') : '') + (s.matchedAlias ? '  (alias : ' + s.matchedAlias + ')' : '');
+            ls.appendChild(pickRow(s.name, function () { var ex = ensureLibraryExercise(s.id); if (ex) addToTemplate(templateId, ex); }, sub));
+          });
+          results.appendChild(ls);
+        }
+        // "Créer" seulement si AUCUNE correspondance exacte (bibliothèque structurée ou perso)
+        if (!HexisLibrary.hasExactMatch(search.value) && !libMatch.length) {
+          var cb = el('button', 'btn ghost', '＋ Créer « ' + search.value.trim() + ' »');
+          cb.onclick = function () { var ex = A.createExercise(search.value.trim(), null); addToTemplate(templateId, ex); };
+          results.appendChild(cb);
+        }
+        return;
+      }
       var cat = catalogFlat().filter(function (c) { return (!q || norm(c.name).indexOf(q) >= 0) && !libNames[norm(c.name)]; });
       if (cat.length) {
         results.appendChild(el('div', 'card-eyebrow', 'Suggestions'));
@@ -2466,6 +2749,102 @@ body{max-width:560px;margin:0 auto;min-height:100dvh}
     main.appendChild(sel);
     main.appendChild(rangeSelector(function () { progCardioDetail(main, type); }));
     svgChart(ProgressionEngine.cardioSeries({ cardioSessions: A.getCardioSessions(), cardioType: type, metric: PROG_CARDIO_METRIC, range: PROG_RANGE }), main);
+  }
+
+    // ═══ Programmes prêts à installer + bibliothèque structurée (édition test) ═══
+  function ensureLibraryExercise(libId) {
+    var def = HexisLibrary.byId(libId); if (!def) return null;
+    var found = A.getExercises().filter(function (e) { return e.libId === libId; })[0];
+    if (found) return found;
+    var ex = A.createExercise(def.name, null);
+    ex.libId = def.id; ex.category = def.category; ex.exerciseType = def.exerciseType;
+    ex.aliases = (ex.aliases || []).concat(def.aliases);
+    ex.musclesPrimary = def.musclesPrimary; ex.musclesSecondary = def.musclesSecondary;
+    ex.movementPattern = def.movementPattern; ex.equipment = def.equipment; ex.unilateral = def.unilateral;
+    ex.defaults = { setsTarget: 3, repsTarget: def.defaultRepRange ? (def.defaultRepRange.min + '-' + def.defaultRepRange.max) : null, restSeconds: def.defaultRestSeconds };
+    A.saveExercise(ex); return ex;
+  }
+
+  function viewProgrammes(main) {
+    clear(main);
+    var back = el('button', 'back', '‹ Séance'); back.onclick = function () { renderApp('seance'); }; main.appendChild(back);
+    main.appendChild(el('h1', 'display screen-title', 'Programmes'));
+    main.appendChild(el('p', 'lede small', 'Des programmes prêts à installer. Installer crée une copie que tu peux modifier ; ça ne change pas tes séances existantes.'));
+    var assist = el('button', 'btn primary', 'Trouver mon programme'); assist.onclick = function () { programAssistant(main, {}); }; main.appendChild(assist);
+    var list = el('div', 'list');
+    HexisLibrary.PROGRAMS.forEach(function (p) {
+      var b = el('button', 'list-item');
+      var left = el('div', 'li-left'); left.appendChild(el('div', 'li-date', p.name)); left.appendChild(el('div', 'li-sub', p.daysPerWeek + ' jours/sem · ' + p.templates.length + ' séance(s)')); b.appendChild(left);
+      b.appendChild(el('span', 'menu-chev', '›'));
+      b.onclick = function () { programPreview(main, p.id); };
+      list.appendChild(b);
+    });
+    main.appendChild(list);
+  }
+
+  var ASSIST = {};
+  function programAssistant(main, state) {
+    ASSIST = state || {};
+    clear(main);
+    var back = el('button', 'back', '‹ Programmes'); back.onclick = function () { viewProgrammes(main); }; main.appendChild(back);
+    main.appendChild(el('h1', 'display screen-title', 'Trouver mon programme'));
+    function q(title, key, options) {
+      var card = el('section', 'card');
+      card.appendChild(el('div', 'card-eyebrow', title));
+      options.forEach(function (o) {
+        var b = el('button', 'btn ghost' + (ASSIST[key] === o[1] ? ' active-choice' : '')); b.textContent = o[0];
+        b.onclick = function () { ASSIST[key] = o[1]; programAssistant(main, ASSIST); };
+        card.appendChild(b);
+      });
+      main.appendChild(card);
+    }
+    q('Ton expérience', 'experience', [['Je débute ou je reprends', 'beginner_restart'], ['Moins d\'un an', 'under_1y'], ['Plus d\'un an', 'over_1y'], ['Je veux créer moi-même', 'create']]);
+    q('Combien de jours par semaine ?', 'daysPerWeek', [['2 jours', 2], ['3 jours', 3], ['4 jours', 4], ['5 jours ou plus', 5]]);
+    if (ASSIST.experience) {
+      var rec = HexisLibrary.planProgram(ASSIST);
+      var res = el('section', 'card');
+      if (rec) {
+        var p = HexisLibrary.programById(rec);
+        res.appendChild(el('div', 'prog-question', 'Programme conseillé : ' + p.name));
+        res.appendChild(el('p', 'li-sub', p.description));
+        var go = el('button', 'btn primary', 'Voir ce programme'); go.onclick = function () { programPreview(main, rec); }; res.appendChild(go);
+      } else {
+        res.appendChild(el('p', 'lede small', 'Tu préfères créer toi-même : va dans « Mes modèles » pour composer ta séance.'));
+      }
+      main.appendChild(res);
+    }
+  }
+
+  function programPreview(main, programId) {
+    var p = HexisLibrary.programById(programId); if (!p) return viewProgrammes(main);
+    clear(main);
+    var back = el('button', 'back', '‹ Programmes'); back.onclick = function () { viewProgrammes(main); }; main.appendChild(back);
+    main.appendChild(el('h1', 'display screen-title', p.name));
+    main.appendChild(el('p', 'lede small', p.daysPerWeek + ' jours/semaine — ' + p.description));
+    if (p.customizable) main.appendChild(el('p', 'prog-note', 'Base à personnaliser — destinée aux personnes déjà autonomes.'));
+    p.templates.forEach(function (t) {
+      var card = el('section', 'card');
+      card.appendChild(el('div', 'card-eyebrow', t.name + ' · ' + t.items.length + ' exercices'));
+      t.items.forEach(function (item) {
+        var def = HexisLibrary.byId(item.ref);
+        card.appendChild(el('div', 'prog-val-row', def.name + ' — ' + item.sets + '×' + item.repMin + '-' + item.repMax + ', repos ' + item.rest + 's'));
+      });
+      main.appendChild(card);
+    });
+    var install = el('button', 'btn primary', 'Installer ce programme');
+    install.onclick = function () {
+      askConfirm('Installer « ' + p.name + ' » ? Une copie modifiable sera créée dans tes modèles (aucune charge imposée, tes séances actuelles ne changent pas).', function () {
+        try { var res = HexisLibrary.installProgram(A, programId); toast(res.templatesCreated + ' séance(s) ajoutée(s)'); viewModeles(main); }
+        catch (e) { toast('Installation impossible'); }
+      }, { yesLabel: 'Installer' });
+    };
+    main.appendChild(install);
+  }
+
+  // Autocomplétion branchée sur la bibliothèque structurée (utilisée par le sélecteur)
+  function libraryAutocomplete(query) {
+    if (!PROGRAMS_ON) return [];
+    return HexisLibrary.searchExercises(query, { limit: 8 });
   }
 
   function startDraftFromTemplate(t) {
